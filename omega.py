@@ -6,38 +6,38 @@ from pathlib import Path
 
 from modules.config import Settings
 from modules.llm import ModelUnavailable, OllamaClient
-from modules.memory import ConversationMemory, VerifiedProfile
+from modules.memory import (
+    ConversationMemory,
+    VerifiedProfile,
+    extract_personal_fact,
+    extract_requested_key,
+)
 from modules.personality import SYSTEM_PROMPT
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 def print_help() -> None:
     print("OMEGA: Commands: /help, /status, /clear, /remember <fact>, /memories, /forget-all, /exit")
 
 
-def asks_about_user_knowledge(text: str) -> bool:
+def asks_for_full_profile(text: str) -> bool:
     normalized = " ".join(text.lower().replace("?", "").split())
-    exact = {
+    return normalized in {
         "what do you know about me",
         "tell me what you know about me",
         "tell me about me",
         "who am i",
     }
-    personal_starts = (
-        "what is my ", "what's my ", "whats my ", "do you know my ",
-        "when is my ", "where is my ", "who is my ", "how old am i",
-    )
-    return normalized in exact or normalized.startswith(personal_starts)
 
 
 def print_verified_facts(profile: VerifiedProfile) -> None:
     if not profile.facts:
         print("OMEGA: I don't know anything verified about you yet.")
         return
-    print("OMEGA: This is what you've explicitly asked me to remember:")
-    for fact in profile.facts:
-        print(f"  - {fact}")
+    print("OMEGA: This is what I know for certain:")
+    for key, value in profile.facts.items():
+        print(f"  - {key}: {value}")
 
 
 def main() -> None:
@@ -84,11 +84,14 @@ def main() -> None:
             print("OMEGA: Conversation history cleared. Verified facts were kept.")
             continue
         if command.startswith("/remember "):
-            fact = user_input[len("/remember "):].strip()
-            if profile.remember(fact):
-                print("OMEGA: Saved as a verified fact.")
+            fact_text = user_input[len("/remember "):].strip()
+            extracted = extract_personal_fact(fact_text)
+            if not extracted:
+                print("OMEGA: Tell me in a form like 'my favorite color is green.'")
+            elif profile.remember(*extracted):
+                print(f"OMEGA: I'll remember your {extracted[0]} is {extracted[1]}.")
             else:
-                print("OMEGA: Nothing new to save.")
+                print("OMEGA: I already had that saved.")
             continue
         if command == "/memories":
             print_verified_facts(profile)
@@ -97,8 +100,27 @@ def main() -> None:
             profile.clear()
             print("OMEGA: All verified personal facts deleted.")
             continue
-        if asks_about_user_knowledge(user_input):
+
+        requested_key = extract_requested_key(user_input)
+        if requested_key:
+            value = profile.get(requested_key)
+            if value is None:
+                print("OMEGA: I don't know that yet.")
+            else:
+                print(f"OMEGA: Your {requested_key} is {value}.")
+            continue
+        if asks_for_full_profile(user_input):
             print_verified_facts(profile)
+            continue
+
+        extracted = extract_personal_fact(user_input)
+        if extracted:
+            changed = profile.remember(*extracted)
+            if changed:
+                print(f"OMEGA: Got it. Your {extracted[0]} is {extracted[1]}.")
+            else:
+                print("OMEGA: I remember.")
+            memory.append("user", user_input)
             continue
 
         system_content = f"{SYSTEM_PROMPT}\n\n{profile.prompt_context()}"
