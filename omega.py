@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 from modules.config import Settings
@@ -20,6 +21,15 @@ VERSION = "0.1.5"
 
 def print_help() -> None:
     print("OMEGA: Commands: /help, /status, /clear, /remember <fact>, /memories, /forget-all, /exit")
+
+
+def is_casual_challenge(text: str) -> bool:
+    return bool(re.search(
+        r"\b(?:i can|i could|i will|i'll|i am going to|i'm going to|"
+        r"im going to|i bet|bet you|definitely|you can't|you cannot|"
+        r"i(?:'ll| will) beat)\b",
+        text.lower(),
+    ))
 
 
 def asks_for_full_profile(text: str) -> bool:
@@ -219,7 +229,18 @@ def main() -> None:
             f"CURRENT LOCAL DATE AND TIME: {now:%A, %B} {now.day}, {now.year}, "
             f"{now:%-I:%M:%S %p %Z}. Treat this as authoritative."
         )
-        system_content = f"{SYSTEM_PROMPT}\n\n{runtime_context}\n\n{profile.prompt_context()}"
+        intent_context = ""
+        if is_casual_challenge(user_input):
+            intent_context = (
+                "CURRENT MESSAGE TYPE: casual boast, prediction, or challenge. "
+                "Respond with fresh competitive banter. Do not treat it as a factual "
+                "memory question, do not say you lack information, and do not become "
+                "a motivational coach."
+            )
+        system_content = (
+            f"{SYSTEM_PROMPT}\n\n{runtime_context}\n\n"
+            f"{profile.prompt_context()}\n\n{intent_context}"
+        )
         messages = [{"role": "system", "content": system_content}, *memory.messages]
         messages.append({"role": "user", "content": user_input})
         try:
