@@ -1,6 +1,7 @@
 """Transparent conversation and structured verified-profile storage."""
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 from pathlib import Path
@@ -15,7 +16,28 @@ def _write_json(path: Path, value: object) -> None:
 
 def normalize_key(key: str) -> str:
     clean = " ".join(key.lower().strip(" .?!").split())
-    return clean.replace("colour", "color")
+    aliases = {
+        "date of birth": "birthday",
+        "birth date": "birthday",
+        "birthdate": "birthday",
+        "dob": "birthday",
+    }
+    clean = clean.replace("colour", "color")
+    return aliases.get(clean, clean)
+
+
+def normalize_birthday(value: str) -> str:
+    clean = " ".join(value.strip(" .?!,").split())
+    candidates = (clean, clean.replace(",", ""))
+    formats = ("%B %d %Y", "%b %d %Y", "%m/%d/%Y", "%m-%d-%Y", "%Y-%m-%d")
+    for candidate in candidates:
+        for date_format in formats:
+            try:
+                parsed = dt.datetime.strptime(candidate, date_format).date()
+                return f"{parsed:%B} {parsed.day}, {parsed.year}"
+            except ValueError:
+                pass
+    return clean
 
 
 def extract_personal_fact(text: str) -> tuple[str, str] | None:
@@ -23,6 +45,7 @@ def extract_personal_fact(text: str) -> tuple[str, str] | None:
     clean = " ".join(text.strip().split()).rstrip(".")
     clean = re.sub(r"^(?:please\s+)?remember(?:\s+that)?\s+", "", clean, flags=re.I)
     patterns = (
+        (r"^i was born (?:on|in) (.+)$", lambda m: ("birthday", normalize_birthday(m.group(1)))),
         (r"^my favorite ([a-z][a-z ]{0,40}) is (.+)$", lambda m: (f"favorite {m.group(1)}", m.group(2))),
         (r"^my ([a-z][a-z ]{0,40}) is (.+)$", lambda m: (m.group(1), m.group(2))),
         (r"^i am studying (.+)$", lambda m: ("major", m.group(1))),
@@ -42,6 +65,8 @@ def extract_personal_fact(text: str) -> tuple[str, str] | None:
 
 def extract_requested_key(text: str) -> str | None:
     clean = " ".join(text.lower().strip(" .?!").split())
+    if clean in {"when was i born", "what day was i born"}:
+        return "birthday"
     patterns = (
         r"^(?:what is|what's|whats) my (.+)$",
         r"^do you know my (.+)$",
@@ -110,7 +135,6 @@ class VerifiedProfile:
                     for key, value in data.items() if str(value).strip()
                 }
             elif isinstance(data, list):
-                # Migrate the original list-based profile automatically.
                 for item in data:
                     if not isinstance(item, str):
                         continue
@@ -123,7 +147,7 @@ class VerifiedProfile:
 
     def remember(self, key: str, value: str) -> bool:
         clean_key = normalize_key(key)
-        clean_value = value.strip(" .?!")
+        clean_value = normalize_birthday(value) if clean_key == "birthday" else value.strip(" .?!")
         if not clean_key or not clean_value:
             return False
         changed = self.facts.get(clean_key) != clean_value
