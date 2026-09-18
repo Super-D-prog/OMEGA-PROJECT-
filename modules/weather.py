@@ -63,9 +63,12 @@ def _get_json(url: str, timeout: int = 15) -> dict:
 
 
 def weather_report(request: WeatherRequest) -> str:
+    location_parts = [part.strip() for part in request.location.split(",") if part.strip()]
+    search_name = location_parts[0]
+    qualifiers = [part.lower() for part in location_parts[1:]]
     geo_query = urlencode({
-        "name": request.location,
-        "count": 1,
+        "name": search_name,
+        "count": 10,
         "language": "en",
         "format": "json",
     })
@@ -74,6 +77,14 @@ def weather_report(request: WeatherRequest) -> str:
     if not results:
         raise WeatherUnavailable(f"I couldn't find a place named {request.location}.")
     place = results[0]
+    if qualifiers:
+        for candidate in results:
+            searchable = " ".join(str(candidate.get(field, "")).lower() for field in (
+                "name", "admin1", "admin2", "country", "country_code"
+            ))
+            if all(qualifier in searchable for qualifier in qualifiers):
+                place = candidate
+                break
     latitude, longitude = place["latitude"], place["longitude"]
     labels = [place.get("name"), place.get("admin1"), place.get("country")]
     resolved = ", ".join(dict.fromkeys(label for label in labels if label))
