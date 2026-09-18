@@ -36,9 +36,11 @@ WEATHER_CODES = {
 def parse_weather_request(text: str, home: str) -> WeatherRequest | None:
     clean = " ".join(text.strip().rstrip("?.!").split())
     lower = clean.lower()
-    if not any(word in lower for word in (
-        "weather", "forecast", "rain", "temperature", "wear", "jacket", "hoodie", "coat"
-    )):
+    weather_terms = re.compile(
+        r"\b(?:weather|forecast|rain|rainy|raining|temperature|wear|jacket|hoodie|coat)\b",
+        flags=re.I,
+    )
+    if not weather_terms.search(lower):
         return None
     day_offset = 1 if "tomorrow" in lower else 0
     location = None
