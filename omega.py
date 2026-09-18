@@ -14,7 +14,7 @@ from modules.memory import (
 )
 from modules.personality import SYSTEM_PROMPT
 
-VERSION = "0.1.3"
+VERSION = "0.1.4"
 
 
 def print_help() -> None:
@@ -45,14 +45,45 @@ def answer_clock_question(text: str, now: dt.datetime) -> str | None:
     return None
 
 
-def calculate_age(birthday: str, today: dt.date) -> int | None:
+def parse_birthday(birthday: str) -> dt.date | None:
     for date_format in ("%B %d, %Y", "%B %d %Y", "%m/%d/%Y", "%Y-%m-%d"):
         try:
-            born = dt.datetime.strptime(birthday, date_format).date()
-            return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+            return dt.datetime.strptime(birthday, date_format).date()
         except ValueError:
             pass
     return None
+
+
+def calculate_age(birthday: str, today: dt.date) -> int | None:
+    born = parse_birthday(birthday)
+    if born is None:
+        return None
+    return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+
+def asks_for_birthday_countdown(text: str) -> bool:
+    normalized = " ".join(text.lower().strip(" .?!").split())
+    return normalized in {
+        "how many days until my birthday",
+        "how long until my birthday",
+        "when is my next birthday",
+    }
+
+
+def birthday_countdown(birthday: str, today: dt.date) -> tuple[int, dt.date] | None:
+    born = parse_birthday(birthday)
+    if born is None:
+        return None
+    try:
+        next_birthday = dt.date(today.year, born.month, born.day)
+    except ValueError:
+        next_birthday = dt.date(today.year, 2, 28)
+    if next_birthday < today:
+        try:
+            next_birthday = dt.date(today.year + 1, born.month, born.day)
+        except ValueError:
+            next_birthday = dt.date(today.year + 1, 2, 28)
+    return (next_birthday - today).days, next_birthday
 
 
 def print_verified_facts(profile: VerifiedProfile) -> None:
@@ -129,6 +160,22 @@ def main() -> None:
         clock_answer = answer_clock_question(user_input, now)
         if clock_answer:
             print(f"OMEGA: {clock_answer}")
+            continue
+
+        if asks_for_birthday_countdown(user_input):
+            birthday = profile.get("birthday")
+            result = birthday_countdown(birthday, now.date()) if birthday else None
+            if result is None:
+                print("OMEGA: I don't know your birthday yet.")
+            else:
+                days, next_birthday = result
+                if days == 0:
+                    print("OMEGA: Your birthday is today.")
+                else:
+                    print(
+                        f"OMEGA: Your next birthday is {next_birthday:%B} "
+                        f"{next_birthday.day}, {next_birthday.year} — {days} days away."
+                    )
             continue
 
         requested_key = extract_requested_key(user_input)
