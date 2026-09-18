@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -22,6 +23,9 @@ class OllamaClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "options": {
+                "stop": ["\nDarihan:", "\nYou:", "\nUser:", "\nOMEGA:"]
+            },
         }).encode("utf-8")
         request = Request(
             f"{self.base_url}/api/chat",
@@ -41,6 +45,20 @@ class OllamaClient:
             ) from exc
         try:
             content = result["message"]["content"].strip()
+            content = re.sub(
+                r'^(?:["\']?\s*OMEGA\s*:\s*)+',
+                "",
+                content,
+                flags=re.I,
+            )
+            cut_points = [
+                position for marker in ("\nDarihan:", "\nYou:", "\nUser:", "\nOMEGA:")
+                if (position := content.find(marker)) >= 0
+            ]
+            if cut_points:
+                content = content[:min(cut_points)].rstrip()
+            if len(content) >= 2 and content[0] == content[-1] and content[0] in {'"', "'"}:
+                content = content[1:-1].strip()
         except (KeyError, TypeError, AttributeError) as exc:
             raise ModelUnavailable("Ollama returned an unexpected response.") from exc
         if not content:
