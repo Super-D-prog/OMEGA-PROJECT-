@@ -13,8 +13,9 @@ from modules.memory import (
     extract_requested_key,
 )
 from modules.personality import SYSTEM_PROMPT
+from modules.weather import WeatherUnavailable, parse_weather_request, weather_report
 
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 
 
 def print_help() -> None:
@@ -160,6 +161,15 @@ def main() -> None:
         clock_answer = answer_clock_question(user_input, now)
         if clock_answer:
             print(f"OMEGA: {clock_answer}")
+            continue
+
+        weather_request = parse_weather_request(user_input, settings.home_location)
+        if weather_request:
+            try:
+                report = weather_report(weather_request)
+                print(f"OMEGA: {report}")
+            except WeatherUnavailable as exc:
+                print(f"OMEGA: {exc}")
             continue
 
         if asks_for_birthday_countdown(user_input):
