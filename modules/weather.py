@@ -36,13 +36,16 @@ WEATHER_CODES = {
 def parse_weather_request(text: str, home: str) -> WeatherRequest | None:
     clean = " ".join(text.strip().rstrip("?.!").split())
     lower = clean.lower()
-    if not any(word in lower for word in ("weather", "forecast", "rain", "temperature")):
+    if not any(word in lower for word in (
+        "weather", "forecast", "rain", "temperature", "wear", "jacket", "hoodie", "coat"
+    )):
         return None
     day_offset = 1 if "tomorrow" in lower else 0
     location = None
     patterns = (
         r"(?:weather|forecast|temperature)(?:\s+like)?\s+(?:in|for|at)\s+(.+)",
         r"will it rain\s+(?:in|at)\s+(.+)",
+        r"(?:what should i wear|should i wear (?:a )?(?:jacket|hoodie|coat))\s+(?:in|for|at)\s+(.+)",
     )
     for pattern in patterns:
         match = re.search(pattern, clean, flags=re.I)
@@ -85,6 +88,38 @@ def _get_json(url: str, timeout: int = 15) -> dict:
             json.JSONDecodeError,
         ) as exc:
             raise WeatherUnavailable("I couldn't reach the weather service.") from exc
+
+
+def clothing_recommendation(
+    feels_like: float,
+    high: float,
+    low: float,
+    rain_chance: int,
+    condition: str,
+    wind: float = 0,
+) -> str:
+    reference = min(feels_like, low)
+    if reference <= 25:
+        items = ["a heavy winter coat", "warm layers", "gloves"]
+    elif reference <= 40:
+        items = ["a warm jacket or coat", "long pants"]
+    elif reference <= 55:
+        items = ["a hoodie or light jacket", "long pants"]
+    elif reference <= 65:
+        items = ["a light layer or hoodie"]
+    elif high >= 85:
+        items = ["light, breathable clothes"]
+    else:
+        items = ["comfortable light clothing"]
+
+    wet_conditions = any(word in condition for word in ("rain", "drizzle", "shower", "thunder"))
+    if rain_chance >= 40 or wet_conditions:
+        items.append("an umbrella or waterproof outer layer")
+    if wind >= 20:
+        items.append("a wind-resistant layer")
+    if high >= 85:
+        items.append("water")
+    return "Wear " + ", ".join(items) + "."
 
 
 def weather_report(request: WeatherRequest) -> str:
@@ -144,9 +179,10 @@ def weather_report(request: WeatherRequest) -> str:
         raise WeatherUnavailable("The weather service returned incomplete forecast data.")
 
     if request.day_offset == 1:
+        clothing = clothing_recommendation(low, high, low, rain_chance, condition)
         return (
             f"Tomorrow in {resolved}: {condition}, high {high}°F, low {low}°F, "
-            f"with a {rain_chance}% chance of precipitation."
+            f"with a {rain_chance}% chance of precipitation. {clothing}"
         )
 
     current = data.get("current") or {}
@@ -158,8 +194,12 @@ def weather_report(request: WeatherRequest) -> str:
         current_condition = WEATHER_CODES.get(current["weather_code"], condition)
     except (KeyError, TypeError):
         raise WeatherUnavailable("The weather service returned incomplete current conditions.")
+    clothing = clothing_recommendation(
+        feels, high, low, rain_chance, current_condition, wind
+    )
     return (
         f"In {resolved}, it is {temperature}°F and {current_condition}; it feels like "
         f"{feels}°F. Humidity is {humidity}% and wind is {wind} mph. "
-        f"Today's high is {high}°F, the low is {low}°F, and precipitation chance is {rain_chance}%."
+        f"Today's high is {high}°F, the low is {low}°F, and precipitation chance is "
+        f"{rain_chance}%. {clothing}"
     )
