@@ -14,7 +14,7 @@ from modules.memory import (
 )
 from modules.personality import SYSTEM_PROMPT
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 def print_help() -> None:
@@ -24,11 +24,35 @@ def print_help() -> None:
 def asks_for_full_profile(text: str) -> bool:
     normalized = " ".join(text.lower().replace("?", "").split())
     return normalized in {
-        "what do you know about me",
-        "tell me what you know about me",
-        "tell me about me",
-        "who am i",
+        "what do you know about me", "tell me what you know about me",
+        "tell me about me", "who am i",
     }
+
+
+def answer_clock_question(text: str, now: dt.datetime) -> str | None:
+    normalized = " ".join(text.lower().strip(" .?!").split())
+    if normalized in {"what time is it", "what's the time", "whats the time", "current time"}:
+        return f"It is {now:%-I:%M %p %Z}."
+    if normalized in {
+        "what is today's date", "what's today's date", "whats todays date",
+        "what date is it", "today's date", "todays date",
+    }:
+        return f"Today is {now:%A, %B} {now.day}, {now.year}."
+    if normalized in {"what day is it", "what day is today"}:
+        return f"Today is {now:%A}."
+    if normalized in {"what year is it", "what is the current year", "current year"}:
+        return f"It is {now.year}."
+    return None
+
+
+def calculate_age(birthday: str, today: dt.date) -> int | None:
+    for date_format in ("%B %d, %Y", "%B %d %Y", "%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            born = dt.datetime.strptime(birthday, date_format).date()
+            return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        except ValueError:
+            pass
+    return None
 
 
 def print_verified_facts(profile: VerifiedProfile) -> None:
@@ -87,9 +111,9 @@ def main() -> None:
             fact_text = user_input[len("/remember "):].strip()
             extracted = extract_personal_fact(fact_text)
             if not extracted:
-                print("OMEGA: Tell me in a form like 'my favorite color is green.'")
+                print("OMEGA: Tell me in a form like 'my favorite color is green' or 'I was born on July 24, 2007.'")
             elif profile.remember(*extracted):
-                print(f"OMEGA: I'll remember your {extracted[0]} is {extracted[1]}.")
+                print(f"OMEGA: I'll remember your {extracted[0]} is {profile.get(extracted[0])}.")
             else:
                 print("OMEGA: I already had that saved.")
             continue
@@ -101,8 +125,19 @@ def main() -> None:
             print("OMEGA: All verified personal facts deleted.")
             continue
 
+        now = dt.datetime.now().astimezone()
+        clock_answer = answer_clock_question(user_input, now)
+        if clock_answer:
+            print(f"OMEGA: {clock_answer}")
+            continue
+
         requested_key = extract_requested_key(user_input)
         if requested_key:
+            if requested_key == "age":
+                birthday = profile.get("birthday")
+                age = calculate_age(birthday, now.date()) if birthday else None
+                print(f"OMEGA: You are {age} years old." if age is not None else "OMEGA: I don't know that yet.")
+                continue
             value = profile.get(requested_key)
             if value is None:
                 print("OMEGA: I don't know that yet.")
@@ -117,13 +152,17 @@ def main() -> None:
         if extracted:
             changed = profile.remember(*extracted)
             if changed:
-                print(f"OMEGA: Got it. Your {extracted[0]} is {extracted[1]}.")
+                print(f"OMEGA: Got it. Your {extracted[0]} is {profile.get(extracted[0])}.")
             else:
                 print("OMEGA: I remember.")
             memory.append("user", user_input)
             continue
 
-        system_content = f"{SYSTEM_PROMPT}\n\n{profile.prompt_context()}"
+        runtime_context = (
+            f"CURRENT LOCAL DATE AND TIME: {now:%A, %B} {now.day}, {now.year}, "
+            f"{now:%-I:%M:%S %p %Z}. Treat this as authoritative."
+        )
+        system_content = f"{SYSTEM_PROMPT}\n\n{runtime_context}\n\n{profile.prompt_context()}"
         messages = [{"role": "system", "content": system_content}, *memory.messages]
         messages.append({"role": "user", "content": user_input})
         try:
