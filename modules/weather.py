@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -58,8 +59,32 @@ def _get_json(url: str, timeout: int = 15) -> dict:
     try:
         with urlopen(request, timeout=timeout) as response:
             return json.load(response)
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise WeatherUnavailable("I couldn't reach the weather service.") from exc
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+        # Some macOS Python installations cannot find the system TLS
+        # certificates. Fall back to Apple's bundled curl certificate stack.
+        try:
+            result = subprocess.run(
+                [
+                    "/usr/bin/curl", "--fail", "--silent", "--show-error",
+                    "--max-time", str(timeout), url,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout + 2,
+            )
+            payload = json.loads(result.stdout)
+            if not isinstance(payload, dict):
+                raise ValueError("Unexpected weather response")
+            return payload
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise WeatherUnavailable("I couldn't reach the weather service.") from exc
 
 
 def weather_report(request: WeatherRequest) -> str:
