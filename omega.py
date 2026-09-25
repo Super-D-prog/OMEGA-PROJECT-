@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import subprocess
 from pathlib import Path
 
 from modules.config import Settings
@@ -14,13 +15,14 @@ from modules.memory import (
     extract_requested_key,
 )
 from modules.personality import SYSTEM_PROMPT
+from modules.proactive import MorningBriefing
 from modules.weather import WeatherUnavailable, parse_weather_request, weather_report
 
-VERSION = "0.1.5"
+VERSION = "0.1.6"
 
 
 def print_help() -> None:
-    print("OMEGA: Commands: /help, /status, /clear, /remember <fact>, /memories, /forget-all, /exit")
+    print("OMEGA: Commands: /help, /status, /briefing, /clear, /remember <fact>, /memories, /forget-all, /exit")
 
 
 def is_casual_challenge(text: str) -> bool:
@@ -115,9 +117,30 @@ def main() -> None:
     profile.load()
     model = OllamaClient(settings.ollama_url, settings.model, settings.request_timeout)
 
+    def announce(message: str) -> None:
+        print(f"\nOMEGA: {message}\n")
+        if settings.speak_briefings:
+            try:
+                subprocess.Popen(
+                    ["/usr/bin/say", message],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                pass
+
+    briefing = MorningBriefing(
+        state_path=data_dir / "proactive.json",
+        location=settings.home_location,
+        briefing_time=settings.morning_briefing_time,
+        announce=announce,
+    )
+
     print(f"OMEGA ONLINE — Version {VERSION}")
     print(f"Local model: {settings.model}")
     print_help()
+    if settings.proactive_enabled:
+        briefing.start()
 
     while True:
         try:
@@ -142,8 +165,13 @@ def main() -> None:
                 f"OMEGA: Online. Model {settings.model}; "
                 f"local time {now:%Y-%m-%d %H:%M:%S %Z}; "
                 f"{len(memory.messages)} recent messages and "
-                f"{len(profile.facts)} verified facts loaded."
+                f"{len(profile.facts)} verified facts loaded; "
+                f"morning briefing {'enabled' if settings.proactive_enabled else 'disabled'} "
+                f"for {settings.morning_briefing_time}."
             )
+            continue
+        if command == "/briefing":
+            briefing.run_now()
             continue
         if command == "/clear":
             memory.clear()
@@ -252,6 +280,8 @@ def main() -> None:
         print(f"OMEGA: {answer}")
         memory.append("user", user_input)
         memory.append("assistant", answer)
+
+    briefing.stop()
 
 
 if __name__ == "__main__":
