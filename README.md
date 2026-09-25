@@ -37,10 +37,33 @@ python omega.py
 
 - `/help` — display commands
 - `/status` — show runtime status
+- `/briefing` — preview the morning briefing now
 - `/clear` — erase recent conversation history
 - `/exit` — shut down OMEGA
 
 Conversation history is stored locally in `data/conversation.json` and is excluded from Git. This is short-term context, not the complete long-term memory system planned for v0.2.
+
+
+## Proactive morning briefing
+
+While OMEGA is running, she can initiate one briefing each morning at 9:00 AM. It includes the local date and time, weather for the configured home location, and clothing advice. The daily delivery state is saved locally in `data/proactive.json`.
+
+Preview it at any time:
+
+```bash
+/briefing
+```
+
+Optional environment settings:
+
+```bash
+OMEGA_BRIEFING_TIME=08:30 python3 omega.py
+OMEGA_HOME_LOCATION="Newark, New Jersey" python3 omega.py
+OMEGA_PROACTIVE=false python3 omega.py
+OMEGA_SPEAK_BRIEFINGS=true python3 omega.py
+```
+
+On macOS, `OMEGA_SPEAK_BRIEFINGS=true` reads the proactive briefing aloud with the built-in `say` voice. OMEGA must currently be running for the internal scheduler to fire. A macOS LaunchAgent can be added later so the operating system starts OMEGA automatically before the briefing.
 
 ## Safety architecture
 
