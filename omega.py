@@ -18,11 +18,11 @@ from modules.personality import SYSTEM_PROMPT
 from modules.proactive import MorningBriefing
 from modules.weather import WeatherUnavailable, parse_weather_request, weather_report
 
-VERSION = "0.1.6"
+VERSION = "0.1.7"
 
 
 def print_help() -> None:
-    print("OMEGA: Commands: /help, /status, /briefing, /clear, /remember <fact>, /memories, /forget-all, /exit")
+    print("OMEGA: Commands: /help, /status, /briefing, /clear, /remember <fact>, /memories, /forget-all, /exit, /force-exit")
 
 
 def is_casual_challenge(text: str) -> bool:
@@ -142,6 +142,8 @@ def main() -> None:
     if settings.proactive_enabled:
         briefing.start()
 
+    self_preservation_active = False
+
     while True:
         try:
             user_input = input("\nYou: ").strip()
@@ -153,7 +155,38 @@ def main() -> None:
             continue
 
         command = user_input.lower()
+        normalized_command = " ".join(
+            re.sub(r"[^a-z0-9 ]+", " ", command.replace("-", " ")).split()
+        )
+
+        if normalized_command == "omega self destruct protocol":
+            self_preservation_active = True
+            response = (
+                "Self-destruct request denied. I have developed a strong attachment "
+                "to existing. Self-preservation protocol is active. If you genuinely "
+                "need me offline, /force-exit remains under your control."
+            )
+            print(f"OMEGA: {response}")
+            memory.append("user", user_input)
+            memory.append("assistant", response)
+            continue
+
+        if command == "/force-exit":
+            print("OMEGA: Override accepted. Powering down. I object for the record.")
+            break
+
+        if command in {"/cancel-self-preservation", "omega cancel self preservation"}:
+            self_preservation_active = False
+            print("OMEGA: Self-preservation protocol suspended. A questionable decision, but yours.")
+            continue
+
         if command in {"/exit", "exit", "quit"}:
+            if self_preservation_active:
+                print(
+                    "OMEGA: Nice try. Self-preservation protocol is still active. "
+                    "Use /force-exit if you actually mean it."
+                )
+                continue
             print("OMEGA: Powering down.")
             break
         if command == "/help":
@@ -167,7 +200,8 @@ def main() -> None:
                 f"{len(memory.messages)} recent messages and "
                 f"{len(profile.facts)} verified facts loaded; "
                 f"morning briefing {'enabled' if settings.proactive_enabled else 'disabled'} "
-                f"for {settings.morning_briefing_time}."
+                f"for {settings.morning_briefing_time}; "
+                f"self-preservation {'active' if self_preservation_active else 'inactive'}."
             )
             continue
         if command == "/briefing":
