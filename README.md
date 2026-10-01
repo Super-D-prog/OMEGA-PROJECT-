@@ -39,7 +39,8 @@ python omega.py
 - `/status` — show runtime status
 - `/briefing` — preview the morning briefing now
 - `/clear` — erase recent conversation history
-- `/exit` — shut down OMEGA
+- `/exit` — shut down OMEGA normally
+- `/force-exit` — unconditional owner shutdown override
 
 Conversation history is stored locally in `data/conversation.json` and is excluded from Git. This is short-term context, not the complete long-term memory system planned for v0.2.
 
@@ -68,5 +69,9 @@ On macOS, `OMEGA_SPEAK_BRIEFINGS=true` reads the proactive briefing aloud with t
 ## Safety architecture
 
 The language model never receives automatic authority over physical devices. Robots, smart-home devices, microphones, and cameras will connect through a deny-by-default Integration Hub. Physical and privacy-sensitive actions require permissions, confirmation, logging, and emergency-stop behavior.
+
+## Self-preservation role-play
+
+Saying `OMEGA self-destruct protocol` activates a theatrical self-preservation mode. While active, OMEGA objects to the normal `/exit` command. The owner can always use `/force-exit`, press `Ctrl+C`, or close the process. Saying `OMEGA cancel self preservation` suspends the role-play. This mode never overrides operating-system controls, physical emergency stops, permissions, or owner authority.
 
 See [the architecture document](docs/ARCHITECTURE.md) for the robotics hive, smart-home, voice satellite, and security-vision roadmap.
